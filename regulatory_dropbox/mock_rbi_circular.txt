@@ -1,0 +1,27 @@
+RESERVE BANK OF INDIA
+Department of Regulation
+
+RBI/2026-27/44
+DoR.ITS.REC.18/21.05.011/2026-27
+
+June 10, 2026
+
+All Scheduled Commercial Banks (excluding Regional Rural Banks)
+
+Madam / Dear Sir,
+
+Master Direction - Cyber Security Governance and Incident Reporting Thresholds in Commercial Banks
+
+1. Introduction
+The Reserve Bank of India, having been satisfied that it is necessary in the public interest, hereby issues this Direction to streamline information security practices and align cyber defense protocols across banking networks.
+
+2. Information Security Policy
+2.1 Every bank shall establish a Board-approved Information Security Policy which covers infrastructure architecture, logical asset registers, and identity access rules.
+2.2 Provided that any third-party APIs connected directly to core banking hosts are subjected to daily automated penetration testing operations.
+
+3. Cyber Incident Incident Response Timelines
+3.1 Banks shall report any major cybersecurity incident (unauthorized server intrusion or system downtime) within 2 hours of detection.
+3.2 Incident classifications and structural notification forms shall align with the formats appended in Annexure I of this circular.
+
+4. Effective Date
+This Directive and all appended structural security mandates are effective from June 10, 2026.

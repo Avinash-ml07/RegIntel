@@ -4,29 +4,33 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.agents.watcher import watcher_graph
-from app.schemas.state import StructuralClause
+from app.agents.watcher import ingest_node, parse_node
+from app.agents.graph_rag import graph_rag_node
+from app.schemas.state import StructuralClause, MeasurableActionPoint, RegulatoryState
+from langgraph.graph import StateGraph, END
 
+# --- Complete LangGraph Orchestration definition (Corrected State Typing) ---
+workflow = StateGraph(RegulatoryState)
+
+workflow.add_node("ingest", ingest_node)
+workflow.add_node("parse", parse_node)
+workflow.add_node("graph_rag", graph_rag_node)
+
+workflow.set_entry_point("ingest")
+workflow.add_edge("ingest", "parse")
+workflow.add_edge("parse", "graph_rag")
+workflow.add_edge("graph_rag", END)
+
+watcher_graph = workflow.compile()
+
+# --- FastAPI Setup ---
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="Regulatory ingestion microservice supporting both online and offline operations",
-    version="1.0.0"
+    description="Regulatory ingestion and local GraphRAG MAP creation engine",
+    version="2.0.0"
 )
 
-# In-memory execution storage instance
 jobs_store: Dict[str, dict] = {}
-
-# --- Request/Response Models ---
-
-class TriggerRequest(BaseModel):
-    url: str = Field(
-        default="mock://rbi-circular-investment-portfolio",
-        description="Target reference URL or mock:// identifier."
-    )
-    raw_text: Optional[str] = Field(
-        default=None,
-        description="Explicit document string representation override."
-    )
 
 class TriggerLocalRequest(BaseModel):
     file_path: Optional[str] = Field(
@@ -49,55 +53,44 @@ class JobStatusResponse(BaseModel):
     errors: List[str]
     clauses_count: int
     clauses: List[StructuralClause]
-
-# --- Background Task Runner ---
+    maps: List[MeasurableActionPoint]
 
 async def run_watcher_pipeline(task_id: str, source_resource: Optional[str], raw_text: Optional[str]) -> None:
     initial_state = {
         "raw_text": raw_text if raw_text else "",
         "source_url": source_resource if source_resource else "",
         "clauses": [],
+        "maps": [],
+        "encrypted_privacy_map": "",
         "status": "INITIALIZED",
         "errors": []
     }
     
     try:
-        # LangGraph State-Graph Execution
+        # LangGraph State-Graph Execution (Typed invoking)
         result_state = await watcher_graph.ainvoke(initial_state)
         
         clauses_data = []
         for clause in result_state.get("clauses", []):
-            if hasattr(clause, "model_dump"):
-                clauses_data.append(clause.model_dump())
-            else:
-                clauses_data.append(dict(clause))
+            clauses_data.append(clause.model_dump() if hasattr(clause, "model_dump") else dict(clause))
+
+        maps_data = []
+        for item in result_state.get("maps", []):
+            maps_data.append(item.model_dump() if hasattr(item, "model_dump") else dict(item))
 
         jobs_store[task_id] = {
             "status": result_state.get("status", "COMPLETED"),
             "errors": result_state.get("errors", []),
-            "clauses": clauses_data
+            "clauses": clauses_data,
+            "maps": maps_data
         }
     except Exception as e:
         jobs_store[task_id] = {
             "status": "FAILED",
             "errors": [f"Pipeline execution engine crash: {str(e)}"],
-            "clauses": []
+            "clauses": [],
+            "maps": []
         }
-
-# --- Router Endpoints ---
-
-@app.post(f"{settings.API_V1_STR}/watcher/trigger", response_model=TriggerResponse, status_code=202)
-async def trigger_watcher(payload: TriggerRequest, background_tasks: BackgroundTasks):
-    task_id = str(uuid.uuid4())
-    jobs_store[task_id] = {"status": "PROCESSING", "errors": [], "clauses": []}
-    
-    background_tasks.add_task(run_watcher_pipeline, task_id, payload.url, payload.raw_text)
-    
-    return TriggerResponse(
-        task_id=task_id,
-        status="PROCESSING",
-        source_resource=payload.url
-    )
 
 @app.post(f"{settings.API_V1_STR}/watcher/trigger-local", response_model=TriggerResponse, status_code=202)
 async def trigger_local_watcher(payload: TriggerLocalRequest, background_tasks: BackgroundTasks):
@@ -105,7 +98,7 @@ async def trigger_local_watcher(payload: TriggerLocalRequest, background_tasks: 
         raise HTTPException(status_code=400, detail="Local trigger requires either 'file_path' or 'raw_text'.")
         
     task_id = str(uuid.uuid4())
-    jobs_store[task_id] = {"status": "PROCESSING", "errors": [], "clauses": []}
+    jobs_store[task_id] = {"status": "PROCESSING", "errors": [], "clauses": [], "maps": []}
     
     background_tasks.add_task(run_watcher_pipeline, task_id, payload.file_path, payload.raw_text)
     
@@ -126,5 +119,6 @@ async def get_watcher_status(task_id: str = Path(..., description="Task executio
         status=job["status"],
         errors=job["errors"],
         clauses_count=len(job["clauses"]),
-        clauses=[StructuralClause(**c) for c in job["clauses"]]
+        clauses=[StructuralClause(**c) for c in job["clauses"]],
+        maps=[MeasurableActionPoint(**m) for m in job["maps"]]
     )

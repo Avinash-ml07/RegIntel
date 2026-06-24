@@ -7,15 +7,13 @@ class RegulatoryParser:
     def __init__(self) -> None:
         try:
             self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            # Direct wheel installation to resolve automated 404 URL assembly issues
-            import subprocess
-            print("Model 'en_core_web_sm' not found. Installing directly from GitHub...")
-            subprocess.run([
-                "pip", "install", 
-                "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl"
-            ], check=True)
-            self.nlp = spacy.load("en_core_web_sm")
+        except OSError as e:
+            # Raise descriptive action steps instead of attempting a live network download
+            raise RuntimeError(
+                "NLP Engine Failure: spaCy model 'en_core_web_sm' is not loaded. "
+                "Ensure you run 'pip install offline_assets/en_core_web_sm-3.7.0-py3-none-any.whl' "
+                "inside your air-gapped virtual environment before starting the server."
+            ) from e
     
     def extract_metadata(self, text: str) -> RegulatoryMetadata:
         doc_header = self.nlp(text[:4000])
